@@ -18,17 +18,25 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
 */
 package com.solab.iso8583;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.text.ParseException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.TimeZone;
 
-import com.solab.iso8583.parse.DateTimeParseInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.solab.iso8583.parse.ConfigParser;
+import com.solab.iso8583.parse.DateTimeParseInfo;
 import com.solab.iso8583.parse.FieldParseInfo;
+import com.solab.iso8583.util.BcdCodec;
 
 /** This class is used to create messages, either from scratch or from an existing String or byte
  * buffer. It can be configured to put default values on newly created messages, and also to know
@@ -210,14 +218,20 @@ public class MessageFactory<T extends IsoMessage> {
 	/** Creates a new message of the specified type, with optional trace and date values as well
 	 * as any other values specified in a message template. If the factory is set to use binary
 	 * messages, then the returned message will be written using binary coding.
-	 * @param type The message type, for example 0x200, 0x400, etc. */
+	 * @param type The message type, for example 0x200, 0x400, etc. 
+	 * 
+	 * 第一处修改 直接构造消息模板
+	 * 
+	 * */
+	
 	public T newMessage(int type) {
 		T m;
-        if (binIsoHeaders.get(type) != null) {
-            m = createIsoMessageWithBinaryHeader(binIsoHeaders.get(type));
-        } else {
-            m = createIsoMessage(isoHeaders.get(type));
-        }
+//        if (binIsoHeaders.get(type) != null) {
+//            m = createIsoMessageWithBinaryHeader(binIsoHeaders.get(type));
+//        } else {
+//            m = createIsoMessage(isoHeaders.get(type));
+//        }
+        m = createIsoMessage(isoHeaders.get(type));
 		m.setType(type);
 		m.setEtx(etx);
 		m.setBinary(useBinary);
@@ -237,12 +251,13 @@ public class MessageFactory<T extends IsoMessage> {
 				}
 			}
 		}
-		if (traceGen != null) {
-			m.setValue(11, traceGen.nextTrace(), IsoType.NUMERIC, 6);
-		}
-		if (setDate) {
-			m.setValue(7, new Date(), IsoType.DATE10, 10);
-		}
+		//此处屏蔽
+//		if (traceGen != null) {
+//			m.setValue(11, traceGen.nextTrace(), IsoType.NUMERIC, 6);
+//		}
+//		if (setDate) {
+//			m.setValue(7, new Date(), IsoType.DATE10, 10);
+//		}
 		return m;
 	}
 
@@ -311,15 +326,19 @@ public class MessageFactory<T extends IsoMessage> {
 			throw new ParseException("Insufficient buffer length, needs to be at least " + minlength, 0);
 		}
 		final T m;
-        if (binaryIsoHeader && isoHeaderLength > 0) {
-            byte[] _bih = new byte[isoHeaderLength];
-            System.arraycopy(buf, 0, _bih, 0, isoHeaderLength);
-            m = createIsoMessageWithBinaryHeader(_bih);
-        } else {
-            m = createIsoMessage(isoHeaderLength > 0 ?
-    				new String(buf, 0, isoHeaderLength, encoding) : null);
-        }
+//        if (binaryIsoHeader && isoHeaderLength > 0) {
+//            byte[] _bih = new byte[isoHeaderLength];
+//            System.arraycopy(buf, 0, _bih, 0, isoHeaderLength);
+//            m = createIsoMessageWithBinaryHeader(_bih);
+//        } else {
+//            m = createIsoMessage(isoHeaderLength > 0 ?
+//    				new String(buf, 0, isoHeaderLength, encoding) : null);
+//        }
+        m = createIsoMessage(isoHeaderLength > 0 ?
+				new String(buf, 0, isoHeaderLength, encoding) : null);
+        m.setMessage(buf);
 		m.setCharacterEncoding(encoding);
+		m.setIsoHeader(BcdCodec.bcdToStr(buf, 2, isoHeaderLength-2));
 		final int type;
 		if (useBinary) {
 			type = ((buf[isoHeaderLength] & 0xff) << 8) | (buf[isoHeaderLength + 1] & 0xff);
@@ -332,7 +351,12 @@ public class MessageFactory<T extends IsoMessage> {
                     | (buf[isoHeaderLength + 3] - 48);
 		}
 		m.setType(type);
+		//Logging message type
+		if(log.isDebugEnabled()){
+			log.debug(String.format("Message type : [%04x]", type));
+		}
 		//Parse the bitmap (primary first)
+		ByteArrayOutputStream bsOut = new ByteArrayOutputStream();
 		final BitSet bs = new BitSet(64);
 		int pos = 0;
 		if (useBinary || binBitmap) {
@@ -343,6 +367,7 @@ public class MessageFactory<T extends IsoMessage> {
 					bs.set(pos++, (buf[i] & bit) != 0);
 					bit >>= 1;
 				}
+				bsOut.write(buf[i]);
 			}
 			//Check for secondary bitmap and parse if necessary
 			if (bs.get(0)) {
@@ -355,6 +380,7 @@ public class MessageFactory<T extends IsoMessage> {
 						bs.set(pos++, (buf[i] & bit) != 0);
 						bit >>= 1;
 					}
+					bsOut.write(buf[i]);
 				}
 				pos = minlength + 8;
 			} else {
@@ -388,16 +414,17 @@ public class MessageFactory<T extends IsoMessage> {
                         bs.set(pos++, ((bitmapBuffer[i] - 87) & 2) > 0);
                         bs.set(pos++, ((bitmapBuffer[i] - 87) & 1) > 0);
                     }
+                    bsOut.write(buf[i]);
                 }
 				//Check for secondary bitmap and parse it if necessary
 				if (bs.get(0)) {
 					if (buf.length < minlength + 16) {
 						throw new ParseException("Insufficient length for secondary bitmap", minlength);
 					}
-                    if (forceStringEncoding) {
-                        byte[] _bb = new String(buf, isoHeaderLength+20, 16, encoding).getBytes();
-                        System.arraycopy(_bb, 0, bitmapBuffer, 20+isoHeaderLength, 16);
-                    }
+//                    if (forceStringEncoding) {
+//                        byte[] _bb = new String(buf, isoHeaderLength+20, 16, encoding).getBytes();
+//                        System.arraycopy(_bb, 0, bitmapBuffer, 20+isoHeaderLength, 16);
+//                    }
 					for (int i = isoHeaderLength + 20; i < isoHeaderLength + 36; i++) {
 						if (bitmapBuffer[i] >= '0' && bitmapBuffer[i] <= '9') {
 							bs.set(pos++, ((bitmapBuffer[i] - 48) & 8) > 0);
@@ -415,6 +442,7 @@ public class MessageFactory<T extends IsoMessage> {
 							bs.set(pos++, ((bitmapBuffer[i] - 87) & 2) > 0);
 							bs.set(pos++, ((bitmapBuffer[i] - 87) & 1) > 0);
 						}
+						bsOut.write(buf[i]);
 					}
 					pos = 16 + minlength;
 				} else {
@@ -425,6 +453,25 @@ public class MessageFactory<T extends IsoMessage> {
 				_e.initCause(ex);
 				throw _e;
 			}
+		}
+		m.setBitmap(bsOut.toByteArray());
+		int bsLen = bs.size();
+		List<Integer> usedFields = new ArrayList<Integer>();
+		for(int i=0; i<bsLen; i++){
+			if(bs.get(i)){
+				usedFields.add(i + 1);
+			}
+		}
+		m.setUsedFields(usedFields);
+    	
+    	//Logging bitmap
+		if(log.isDebugEnabled()){
+			StringBuffer bsBuf = new StringBuffer();
+			for(int field : usedFields){
+				bsBuf.append(field);
+				bsBuf.append(" ");
+			}
+			log.debug("Bitmap : [{}]", bsBuf.toString());
 		}
 		//Parse each field
 		Map<Integer, FieldParseInfo> parseGuide = parseMap.get(type);
@@ -458,33 +505,30 @@ public class MessageFactory<T extends IsoMessage> {
 						log.warn("Field {} is not really in the message even though it's in the bitmap", i);
 						bs.clear(i - 1);
 					} else {
-                        CustomField<?> decoder = fpi.getDecoder();
-                        if (decoder == null) {
-                            decoder = getCustomField(i);
-                        }
-						IsoValue<?> val = fpi.parseBinary(i, buf, pos, decoder);
+						IsoValue<?> val = fpi.parseBinary(i, buf, pos, getCustomField(i));
 						m.setField(i, val);
 						if (val != null) {
-							if (val.getType() == IsoType.NUMERIC || val.getType() == IsoType.DATE10
-									|| val.getType() == IsoType.DATE4
-									|| val.getType() == IsoType.DATE12
-									|| val.getType() == IsoType.DATE14
-									|| val.getType() == IsoType.DATE_EXP
-									|| val.getType() == IsoType.AMOUNT
-									|| val.getType() == IsoType.TIME) {
+							IsoType valType = val.getType();
+							if (valType == IsoType.NUMERIC || valType == IsoType.DATE10
+									|| valType == IsoType.DATE4 || valType == IsoType.DATE_EXP
+									|| valType == IsoType.AMOUNT || valType == IsoType.TIME
+									|| valType == IsoType.BCD|| valType == IsoType.BCD99) {
 								pos += (val.getLength() / 2) + (val.getLength() % 2);
 							} else {
 								pos += val.getLength();
 							}
-							if (val.getType() == IsoType.LLVAR || val.getType() == IsoType.LLBIN) {
+							if (valType == IsoType.LLVAR || valType == IsoType.LLBIN || valType == IsoType.LLBCD || valType == IsoType.LLBCD99 || valType == IsoType.LLHBIN || valType == IsoType.LLHBCD || valType == IsoType.LLHBCDVS ) {
 								pos++;
-							} else if (val.getType() == IsoType.LLLVAR
-									|| val.getType() == IsoType.LLLBIN
-                                    || val.getType() == IsoType.LLLLVAR
-									|| val.getType() == IsoType.LLLLBIN) {
-                                pos += 2;
-                            }
+							} else if (valType == IsoType.LLLVAR || valType == IsoType.LLLBIN || valType == IsoType.LLLBCD || valType == IsoType.LLLBCD99) {
+								pos += 2;
+							}
 						}
+						if(i==2||i==35){
+							log.debug("F{} {} :[{}] [{}]", i, val.getType(), val.getLength(), BcdCodec.hiddenCard(val.toString()));
+						}else{
+							log.debug("F{} {} :[{}] [{}]", i, val.getType(), val.getLength(), val.toString());	
+						}
+						
 					}
 				}
 			}
@@ -496,21 +540,25 @@ public class MessageFactory<T extends IsoMessage> {
 						log.warn("Field {} is not really in the message even though it's in the bitmap", i);
 						bs.clear(i - 1);
 					} else {
-                        CustomField<?> decoder = fpi.getDecoder();
-                        if (decoder == null) {
-                            decoder = getCustomField(i);
-                        }
-						IsoValue<?> val = fpi.parse(i, buf, pos, decoder);
+						IsoValue<?> val = fpi.parse(i, buf, pos, getCustomField(i));
 						m.setField(i, val);
 						//To get the correct next position, we need to get the number of bytes, not chars
-						pos += val.toString().getBytes(fpi.getCharacterEncoding()).length;
-						if (val.getType() == IsoType.LLVAR || val.getType() == IsoType.LLBIN) {
+						if(val.getType() == IsoType.LLLABCD||val.getType() == IsoType.LLABCD){
+							pos += val.toString().getBytes(fpi.getCharacterEncoding()).length/2;
+						}else{
+							pos += val.toString().getBytes(fpi.getCharacterEncoding()).length;	
+						}
+						if (val.getType() == IsoType.LLVAR || val.getType() == IsoType.LLBIN || val.getType() == IsoType.LLHBIN || val.getType() == IsoType.LLHBCD|| val.getType() == IsoType.LLHBCDVS || val.getType() == IsoType.LLABCD) {
 							pos += 2;
-						} else if (val.getType() == IsoType.LLLVAR || val.getType() == IsoType.LLLBIN) {
+						} else if (val.getType() == IsoType.LLLVAR || val.getType() == IsoType.LLLBIN || val.getType() == IsoType.LLLABCD) {
 							pos += 3;
-						} else if (val.getType() == IsoType.LLLLVAR || val.getType() == IsoType.LLLLBIN) {
-                            pos += 4;
-                        }
+						}
+						if(i==2||i==35){
+							log.debug("F{} {} :[{}] [{}]", i, val.getType(), val.getLength(), BcdCodec.hiddenCard(val.toString()));
+						}else{
+							log.debug("F{} {} :[{}] [{}]", i, val.getType(), val.getLength(), val.toString());	
+						}
+						
 					}
 				}
 			}

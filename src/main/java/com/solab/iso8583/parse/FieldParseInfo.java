@@ -32,7 +32,7 @@ import com.solab.iso8583.IsoValue;
 public abstract class FieldParseInfo {
 
 	protected IsoType type;
-	protected final int length;
+	protected  int length;
 	private String encoding = System.getProperty("file.encoding");
     protected boolean forceStringDecoding;
     private CustomField<?> decoder;
@@ -135,7 +135,31 @@ public abstract class FieldParseInfo {
             fpi = new LlllvarParseInfo();
         } else if (t == IsoType.LLLLBIN) {
             fpi = new LlllbinParseInfo();
-        }
+        }else if (t == IsoType.BCD){
+			fpi = new BcdParseInfo(len);
+		} else if (t == IsoType.LLBCD){
+			fpi = new LlBcdParseInfo();
+		} else if (t == IsoType.LLLBCD){
+			fpi = new LllBcdParseInfo();
+		} else if (t == IsoType.LLBCD99){
+			fpi = new LlBcd99BillParseInfo();
+		} else if (t == IsoType.LLLBCD99){
+			fpi = new LllBcd99BillParseInfo();
+		} else if (t == IsoType.BCD99){
+			fpi = new Bcd99BillParseInfo(len);
+		} else if (t == IsoType.EBCDIC){
+			fpi = new EbcdicParseInfo(len);
+		} else if (t == IsoType.LLHBIN){
+			fpi = new LlhbinParseInfo();
+		} else if (t == IsoType.LLHBCD){
+			fpi = new LlhBcdParseInfo();
+		} else if (t == IsoType.LLHBCDVS){
+			fpi = new LlhBcdvsParseInfo();
+		} else if (t == IsoType.LLABCD){
+			fpi = new LllaBcdParseInfo();
+		} else if (t == IsoType.LLLABCD){
+			fpi = new LllaBcdParseInfo();
+		}
 		if (fpi == null) {
 	 		throw new IllegalArgumentException(String.format("Cannot parse type %s", t));
 		}

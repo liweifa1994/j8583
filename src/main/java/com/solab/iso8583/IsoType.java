@@ -64,7 +64,19 @@ public enum IsoType {
     /** variable length byte array with 4-digit header length. */
     LLLLBIN(false, 0),
     /** Date in format yyMMddHHmmss. */
-   	DATE12(false,12);
+   	DATE12(false,12),
+   	BCD(true, 0),
+	LLBCD(true, 0),
+	LLLBCD(true, 0),
+	BCD99(false,0),
+	LLBCD99(true,0),
+	LLLBCD99(true,0),
+	EBCDIC(true,0),
+	LLHBIN(false,0),
+	LLHBCD(true,0),
+	LLHBCDVS(true,0),
+	LLABCD(true,0),
+	LLLABCD(true,0);
 
 	private boolean needsLen;
 	private int length;

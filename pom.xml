@@ -40,7 +40,7 @@
 			<groupId>org.slf4j</groupId>
 			<artifactId>slf4j-simple</artifactId>
 			<version>1.7.23</version>
-			<scope>test</scope>
+			<scope>test</scope> 
 		</dependency>
 	</dependencies>
 	<organization>
@@ -66,7 +66,7 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
-				<version>3.5</version>
+				<version>3.1</version>
 				<configuration>
 					<source>1.7</source>
 					<target>1.7</target>

@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.BitSet;
+import java.util.List;
 import java.util.Map;
 
 /** Represents an ISO8583 message. This is the core class of the framework.
@@ -56,7 +57,9 @@ public class IsoMessage {
     private boolean binBitmap;
     private boolean forceStringEncoding;
     private String encoding = System.getProperty("file.encoding");
-
+    private byte[] message;
+    private byte[] bitmap;
+    private List<Integer> usedFields;
     /** Creates a new empty message with no values set. */
     public IsoMessage() {
     }
@@ -554,4 +557,26 @@ public class IsoMessage {
         }
         return false;
     }
+    public byte[] getMessage() {
+		return message;
+	}
+
+	public void setMessage(byte[] message) {
+		this.message = message;
+	}
+	
+	public byte[] getBitmap() {
+		return bitmap;
+	}
+
+	public void setBitmap(byte[] bitmap) {
+		this.bitmap = bitmap;
+	}
+	public List<Integer> getUsedFields() {
+		return usedFields;
+	}
+
+	public void setUsedFields(List<Integer> usedFields) {
+		this.usedFields = usedFields;
+	}
 }
